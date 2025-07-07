@@ -1,4 +1,4 @@
-// src/screens/HistoryScreen.tsx
+// src/screens/HistoryScreen.tsx (COMPLETE)
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -8,10 +8,15 @@ import {
   Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { supabase } from "../lib/supabase";
 import { useNavigation } from "@react-navigation/native";
 import { LineChart } from "react-native-chart-kit";
 import { useAuth } from "../context/AuthContext";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.EXPO_PUBLIC_SUPABASE_URL!,
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 interface DailyTotal {
   [date: string]: number;
@@ -21,27 +26,57 @@ export default function HistoryScreen() {
   const [dailyTotals, setDailyTotals] = useState<DailyTotal>({});
   const [loading, setLoading] = useState(true);
   const navigation = useNavigation();
-  const { user } = useAuth();
+  const { user, getCurrentToken } = useAuth();
 
   useEffect(() => {
-    fetchHistory();
-  }, []);
+    if (user) {
+      fetchHistory();
+    }
+  }, [user]);
 
   const fetchHistory = async () => {
     try {
-      const session = await supabase.auth.getSession();
+      console.log("Fetching history...");
+      const token = await getCurrentToken();
+
+      if (!token) {
+        console.error("No token available");
+        return;
+      }
 
       const response = await fetch(
         `${process.env.EXPO_PUBLIC_API_URL}/api/intake/history`,
         {
           headers: {
-            Authorization: `Bearer ${session.data.session?.access_token}`,
+            Authorization: `Bearer ${token}`,
           },
         }
       );
 
+      console.log("History response status:", response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("History fetch error:", errorText);
+        return;
+      }
+
       const data = await response.json();
-      setDailyTotals(data);
+      console.log("History data:", data);
+
+      // Ensure all values are valid numbers
+      const sanitizedData: DailyTotal = {};
+      for (const [date, total] of Object.entries(data)) {
+        const numTotal = Number(total);
+        if (!isNaN(numTotal) && isFinite(numTotal)) {
+          sanitizedData[date] = numTotal;
+        } else {
+          console.warn(`Invalid caffeine total for date ${date}:`, total);
+          sanitizedData[date] = 0;
+        }
+      }
+
+      setDailyTotals(sanitizedData);
     } catch (error) {
       console.error("Failed to fetch history:", error);
     } finally {
@@ -51,36 +86,50 @@ export default function HistoryScreen() {
 
   const screenWidth = Dimensions.get("window").width;
 
-  // Prepare chart data
-  const sortedEntries = Object.entries(dailyTotals).sort(
-    ([a], [b]) => new Date(a).getTime() - new Date(b).getTime()
-  );
+  // Prepare chart data with safe number handling
+  const sortedEntries = Object.entries(dailyTotals)
+    .filter(([date, total]) => !isNaN(Number(total))) // Filter out invalid numbers
+    .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime());
 
   const last7Days = sortedEntries.slice(-7);
+
+  // Ensure chart has valid data
   const chartData = {
-    labels: last7Days.map(([date]) =>
-      new Date(date).toLocaleDateString("en-US", { weekday: "short" })
-    ),
+    labels:
+      last7Days.length > 0
+        ? last7Days.map(([date]) => {
+            try {
+              return new Date(date).toLocaleDateString("en-US", {
+                weekday: "short",
+              });
+            } catch (e) {
+              return "Invalid";
+            }
+          })
+        : ["No Data"],
     datasets: [
       {
-        data: last7Days.map(([, total]) => total),
+        data:
+          last7Days.length > 0
+            ? last7Days.map(([, total]) => Number(total) || 0)
+            : [0],
         strokeWidth: 3,
       },
     ],
   };
 
-  // Calculate stats
-  const totalDays = Object.keys(dailyTotals).length;
+  // Calculate stats with safe number handling
+  const validTotals = Object.values(dailyTotals)
+    .filter((total) => !isNaN(Number(total)) && isFinite(Number(total)))
+    .map((total) => Number(total));
+
+  const totalDays = validTotals.length;
   const averageIntake =
     totalDays > 0
-      ? Math.round(
-          Object.values(dailyTotals).reduce((a, b) => a + b, 0) / totalDays
-        )
+      ? Math.round(validTotals.reduce((a, b) => a + b, 0) / totalDays)
       : 0;
-  const daysOverLimit = Object.values(dailyTotals).filter(
-    (total) => total > 400
-  ).length;
-  const maxIntake = Math.max(...Object.values(dailyTotals), 0);
+  const daysOverLimit = validTotals.filter((total) => total > 400).length;
+  const maxIntake = validTotals.length > 0 ? Math.max(...validTotals) : 0;
 
   if (loading) {
     return (
@@ -199,41 +248,63 @@ export default function HistoryScreen() {
         {/* Recent Days */}
         <View className="px-6 py-4 pb-8">
           <Text className="text-white text-lg font-bold mb-4">Recent Days</Text>
-          <View className="space-y-3">
-            {sortedEntries
-              .slice(-10)
-              .reverse()
-              .map(([date, total]) => (
-                <View
-                  key={date}
-                  className="bg-gray-900 p-4 rounded-lg border border-gray-700"
-                >
-                  <View className="flex-row justify-between items-center">
-                    <Text className="text-white font-medium">
-                      {new Date(date).toLocaleDateString("en-US", {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </Text>
-                    <View className="items-end">
-                      <Text
-                        className={`text-lg font-bold ${
-                          total > 400 ? "text-red-400" : "text-white"
-                        }`}
-                      >
-                        {total}mg
-                      </Text>
-                      <Text className="text-gray-400 text-xs">
-                        {total > 400
-                          ? `+${total - 400}mg over`
-                          : `${400 - total}mg under`}
-                      </Text>
+          {sortedEntries.length === 0 ? (
+            <View className="bg-gray-900 p-6 rounded-lg border border-gray-700">
+              <Text className="text-gray-400 text-center">
+                No intake data yet. Start logging your caffeine to see your
+                history!
+              </Text>
+            </View>
+          ) : (
+            <View className="space-y-3">
+              {sortedEntries
+                .slice(-10)
+                .reverse()
+                .map(([date, total]) => {
+                  // Safe date formatting
+                  let formattedDate;
+                  try {
+                    formattedDate = new Date(date).toLocaleDateString("en-US", {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                    });
+                  } catch (e) {
+                    formattedDate = date;
+                  }
+
+                  // Safe number handling
+                  const safeTotal = Number(total) || 0;
+
+                  return (
+                    <View
+                      key={date}
+                      className="bg-gray-900 p-4 rounded-lg border border-gray-700"
+                    >
+                      <View className="flex-row justify-between items-center">
+                        <Text className="text-white font-medium">
+                          {formattedDate}
+                        </Text>
+                        <View className="items-end">
+                          <Text
+                            className={`text-lg font-bold ${
+                              safeTotal > 400 ? "text-red-400" : "text-white"
+                            }`}
+                          >
+                            {safeTotal}mg
+                          </Text>
+                          <Text className="text-gray-400 text-xs">
+                            {safeTotal > 400
+                              ? `+${safeTotal - 400}mg over`
+                              : `${400 - safeTotal}mg under`}
+                          </Text>
+                        </View>
+                      </View>
                     </View>
-                  </View>
-                </View>
-              ))}
-          </View>
+                  );
+                })}
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>

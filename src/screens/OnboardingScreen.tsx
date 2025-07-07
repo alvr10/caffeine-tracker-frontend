@@ -60,7 +60,12 @@ export default function OnboardingScreen() {
 
   const finishOnboarding = async () => {
     await AsyncStorage.setItem("hasSeenOnboarding", "true");
-    navigation.navigate("Paywall" as never);
+    // FIXED: Force a complete re-render instead of navigation
+    // This will trigger the App.tsx logic to show PaywallScreen
+    navigation.reset({
+      index: 0,
+      routes: [{ name: "Paywall" as never }],
+    });
   };
 
   const currentData = onboardingData[currentIndex];

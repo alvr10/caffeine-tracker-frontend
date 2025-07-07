@@ -1,8 +1,14 @@
-// src/components/IntakeLogItem.tsx
+// src/components/IntakeLogItem.tsx - Updated with notifications
 import React from "react";
 import { View, Text, TouchableOpacity, Alert } from "react-native";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
+import { useNotification } from "../context/NotificationContext";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.EXPO_PUBLIC_SUPABASE_URL!,
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 interface IntakeLog {
   id: number;
@@ -22,12 +28,19 @@ interface IntakeLogItemProps {
 }
 
 export default function IntakeLogItem({ log, onUpdate }: IntakeLogItemProps) {
+  const { getCurrentToken } = useAuth();
+  const { showNotification } = useNotification();
+
   const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
+    try {
+      return new Date(dateString).toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+    } catch (e) {
+      return "Invalid time";
+    }
   };
 
   const handleDelete = () => {
@@ -43,42 +56,61 @@ export default function IntakeLogItem({ log, onUpdate }: IntakeLogItemProps) {
 
   const deleteLog = async () => {
     try {
-      const session = await supabase.auth.getSession();
+      console.log("Deleting log:", log.id);
+      const token = await getCurrentToken();
+
+      if (!token) {
+        showNotification("Please sign in again", "error");
+        return;
+      }
 
       const response = await fetch(
         `${process.env.EXPO_PUBLIC_API_URL}/api/intake/${log.id}`,
         {
           method: "DELETE",
           headers: {
-            Authorization: `Bearer ${session.data.session?.access_token}`,
+            Authorization: `Bearer ${token}`,
           },
         }
       );
 
+      console.log("Delete response status:", response.status);
+
       if (response.ok) {
-        onUpdate();
+        console.log("Log deleted successfully");
+        onUpdate(); // Refresh the parent component
+        showNotification("Caffeine log deleted", "success");
+      } else {
+        const errorData = await response.json();
+        console.error("Delete error:", errorData);
+        showNotification(errorData.error || "Failed to delete log", "error");
       }
     } catch (error) {
       console.error("Failed to delete log:", error);
+      showNotification("Failed to delete log. Please try again.", "error");
     }
   };
+
+  // Safe number formatting
+  const safeServings = Number(log.servings) || 0;
+  const safeCaffeine = Number(log.total_caffeine) || 0;
 
   return (
     <View className="bg-gray-900 p-4 rounded-lg border border-gray-700">
       <View className="flex-row justify-between items-start">
         <View className="flex-1">
           <Text className="text-white font-semibold text-base">
-            {log.drinks.name}
+            {log.drinks?.name || "Unknown drink"}
           </Text>
-          {log.drinks.brand && (
+          {log.drinks?.brand && (
             <Text className="text-gray-400 text-sm">{log.drinks.brand}</Text>
           )}
           <View className="flex-row mt-2 space-x-4">
             <Text className="text-gray-300 text-sm">
-              {log.servings}x serving{log.servings !== 1 ? "s" : ""}
+              {safeServings}x serving{safeServings !== 1 ? "s" : ""}
             </Text>
             <Text className="text-white text-sm font-medium">
-              {log.total_caffeine}mg
+              {safeCaffeine}mg
             </Text>
           </View>
         </View>

@@ -1,4 +1,4 @@
-// src/screens/HomeScreen.tsx
+// src/screens/HomeScreen.tsx - Updated with settings button and notifications
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -8,11 +8,17 @@ import {
   RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { supabase } from "../lib/supabase";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import CircularProgress from "../components/CircularProgress";
 import IntakeLogItem from "../components/IntakeLogItem";
 import { useAuth } from "../context/AuthContext";
+import { useNotification } from "../context/NotificationContext";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.EXPO_PUBLIC_SUPABASE_URL!,
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 interface IntakeLog {
   id: number;
@@ -35,31 +41,57 @@ interface DailyIntake {
 export default function HomeScreen() {
   const [dailyIntake, setDailyIntake] = useState<DailyIntake | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const navigation = useNavigation();
-  const { user } = useAuth();
+  const { user, getCurrentToken } = useAuth();
+  const { showNotification } = useNotification();
 
-  useEffect(() => {
-    fetchDailyIntake();
-  }, []);
+  // Fetch data when screen comes into focus (after adding intake)
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user) {
+        fetchDailyIntake();
+      }
+    }, [user])
+  );
 
   const fetchDailyIntake = async () => {
     try {
+      if (!user) return;
+
+      console.log("Fetching daily intake...");
       const today = new Date().toISOString().split("T")[0];
-      const session = await supabase.auth.getSession();
+      const token = await getCurrentToken();
+
+      if (!token) {
+        console.error("No token available");
+        return;
+      }
 
       const response = await fetch(
         `${process.env.EXPO_PUBLIC_API_URL}/api/intake/daily/${today}`,
         {
           headers: {
-            Authorization: `Bearer ${session.data.session?.access_token}`,
+            Authorization: `Bearer ${token}`,
           },
         }
       );
 
+      console.log("Daily intake response status:", response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Daily intake error:", errorText);
+        return;
+      }
+
       const data = await response.json();
+      console.log("Daily intake data:", data);
       setDailyIntake(data);
     } catch (error) {
       console.error("Failed to fetch daily intake:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -74,6 +106,14 @@ export default function HomeScreen() {
     : 0;
   const isOverLimit = caffeinePercentage > 100;
 
+  if (loading) {
+    return (
+      <SafeAreaView className="flex-1 bg-black justify-center items-center">
+        <Text className="text-white">Loading...</Text>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView className="flex-1 bg-black">
       <ScrollView
@@ -86,18 +126,38 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Header */}
-        <View className="px-6 pt-4 pb-6">
-          <Text className="text-white text-2xl font-bold">Today's Intake</Text>
-          <Text className="text-gray-400 text-sm">
-            {new Date().toLocaleDateString("en-US", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}
-          </Text>
+        {/* Header with Settings */}
+        <View className="flex-row justify-between items-center px-6 pt-4 pb-6">
+          <View>
+            <Text className="text-white text-2xl font-bold">
+              Today's Intake
+            </Text>
+            <Text className="text-gray-400 text-sm">
+              {new Date().toLocaleDateString("en-US", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("Settings" as never)}
+            className="p-2"
+          >
+            <Text className="text-white text-2xl">⚙️</Text>
+          </TouchableOpacity>
         </View>
+
+        {/* Debug Info */}
+        {__DEV__ && (
+          <View className="mx-6 mb-4 bg-gray-800 p-3 rounded">
+            <Text className="text-yellow-400 text-xs">
+              DEBUG: Total caffeine: {dailyIntake?.total_caffeine || 0}mg, Logs:{" "}
+              {dailyIntake?.logs?.length || 0}
+            </Text>
+          </View>
+        )}
 
         {/* Circular Progress */}
         <View className="items-center mb-8">

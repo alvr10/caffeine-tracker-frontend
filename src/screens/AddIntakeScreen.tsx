@@ -1,4 +1,4 @@
-// src/screens/AddIntakeScreen.tsx
+// src/screens/AddIntakeScreen.tsx - Updated with notifications
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -6,12 +6,18 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
-  Alert,
+  ActivityIndicator,
 } from "react-native";
-import { supabase } from "../lib/supabase";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
+import { useNotification } from "../context/NotificationContext";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.EXPO_PUBLIC_SUPABASE_URL!,
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 interface Drink {
   id: number;
@@ -30,51 +36,98 @@ export default function AddIntakeScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [fetchingDrinks, setFetchingDrinks] = useState(true);
 
   const navigation = useNavigation();
-  const { user } = useAuth();
+  const { user, getCurrentToken } = useAuth();
+  const { showNotification } = useNotification();
 
   const categories = ["all", "coffee", "tea", "energy_drink", "soda", "other"];
 
   useEffect(() => {
-    fetchDrinks();
-  }, []);
+    if (user) {
+      fetchDrinks();
+    }
+  }, [user]);
 
   const fetchDrinks = async () => {
     try {
-      const session = await supabase.auth.getSession();
+      setFetchingDrinks(true);
+      console.log("Fetching drinks...");
+
+      const token = await getCurrentToken();
+
+      if (!token) {
+        console.error("No token available");
+        showNotification("Please sign in again", "error");
+        return;
+      }
 
       const response = await fetch(
         `${process.env.EXPO_PUBLIC_API_URL}/api/drinks`,
         {
           headers: {
-            Authorization: `Bearer ${session.data.session?.access_token}`,
+            Authorization: `Bearer ${token}`,
           },
         }
       );
 
+      console.log("Drinks response status:", response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Drinks fetch error:", errorText);
+        throw new Error("Failed to fetch drinks");
+      }
+
       const data = await response.json();
-      setDrinks(data);
+      console.log("Fetched drinks count:", data?.length || 0);
+
+      if (Array.isArray(data)) {
+        setDrinks(data);
+      } else {
+        console.error("Drinks data is not an array:", data);
+        setDrinks([]);
+        showNotification("Failed to load drinks database", "error");
+      }
     } catch (error) {
       console.error("Failed to fetch drinks:", error);
+      setDrinks([]);
+      showNotification("Failed to load drinks. Please try again.", "error");
+    } finally {
+      setFetchingDrinks(false);
     }
   };
 
   const logIntake = async () => {
     if (!selectedDrink) {
-      Alert.alert("Error", "Please select a drink first.");
+      showNotification("Please select a drink first", "error");
       return;
     }
 
     const servingsNum = parseFloat(servings);
     if (isNaN(servingsNum) || servingsNum <= 0) {
-      Alert.alert("Error", "Please enter a valid number of servings.");
+      showNotification("Please enter a valid number of servings", "error");
       return;
     }
 
     setLoading(true);
     try {
-      const session = await supabase.auth.getSession();
+      const token = await getCurrentToken();
+
+      if (!token) {
+        showNotification("Please sign in again", "error");
+        return;
+      }
+
+      console.log("Logging intake:", {
+        drink_id: selectedDrink.id,
+        drink_name: selectedDrink.name,
+        servings: servingsNum,
+        total_caffeine: Math.round(
+          selectedDrink.caffeine_per_serving * servingsNum
+        ),
+      });
 
       const response = await fetch(
         `${process.env.EXPO_PUBLIC_API_URL}/api/intake`,
@@ -82,7 +135,7 @@ export default function AddIntakeScreen() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${session.data.session?.access_token}`,
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             drink_id: selectedDrink.id,
@@ -91,33 +144,67 @@ export default function AddIntakeScreen() {
         }
       );
 
+      console.log("Intake response status:", response.status);
+
       if (response.ok) {
+        const responseData = await response.json();
+        console.log("Intake logged successfully:", responseData);
+
+        const totalCaffeine = Math.round(
+          selectedDrink.caffeine_per_serving * servingsNum
+        );
+
+        // Navigate back first, then show notification
         navigation.goBack();
+
+        // Use setTimeout to ensure navigation completes before showing notification
+        setTimeout(() => {
+          showNotification(`Logged ${totalCaffeine}mg of caffeine`, "success");
+        }, 100);
       } else {
-        Alert.alert("Error", "Failed to log intake. Please try again.");
+        const errorData = await response.json();
+        console.error("Intake logging error:", errorData);
+        showNotification(errorData.error || "Failed to log intake", "error");
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to log intake. Please try again.");
+      console.error("Failed to log intake:", error);
+      showNotification("Failed to log intake. Please try again.", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredDrinks = drinks.filter((drink) => {
-    const matchesSearch =
-      drink.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (drink.brand &&
-        drink.brand.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesCategory =
-      selectedCategory === "all" || drink.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredDrinks = React.useMemo(() => {
+    if (!Array.isArray(drinks)) {
+      console.warn("drinks is not an array:", drinks);
+      return [];
+    }
+
+    return drinks.filter((drink) => {
+      const matchesSearch =
+        drink.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (drink.brand &&
+          drink.brand.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesCategory =
+        selectedCategory === "all" || drink.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [drinks, searchQuery, selectedCategory]);
 
   const totalCaffeine = selectedDrink
     ? Math.round(
         selectedDrink.caffeine_per_serving * parseFloat(servings || "1")
       )
     : 0;
+
+  if (fetchingDrinks) {
+    return (
+      <SafeAreaView className="flex-1 bg-black justify-center items-center">
+        <ActivityIndicator size="large" color="#FFFFFF" />
+        <Text className="text-white text-lg mt-4">Loading drinks...</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-black">
@@ -150,104 +237,138 @@ export default function AddIntakeScreen() {
       </View>
 
       {/* Categories */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        className="px-6"
-      >
-        <View className="flex-row space-x-3 pb-4">
-          {categories.map((category) => (
-            <TouchableOpacity
-              key={category}
-              onPress={() => setSelectedCategory(category)}
-              className={`px-4 py-2 rounded-full border ${
-                selectedCategory === category
-                  ? "bg-white border-white"
-                  : "bg-transparent border-gray-600"
-              }`}
-            >
-              <Text
-                className={`capitalize ${
-                  selectedCategory === category ? "text-black" : "text-gray-300"
+      <View className="px-6 mb-4">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingVertical: 4 }}
+        >
+          <View className="flex-row space-x-2">
+            {categories.map((category) => (
+              <TouchableOpacity
+                key={category}
+                onPress={() => setSelectedCategory(category)}
+                className={`px-3 py-2 rounded-full border ${
+                  selectedCategory === category
+                    ? "bg-white border-white"
+                    : "bg-transparent border-gray-600"
                 }`}
+                style={{ minWidth: 80 }}
               >
-                {category === "all" ? "All" : category.replace("_", " ")}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Text
+                  className={`text-center text-sm capitalize ${
+                    selectedCategory === category
+                      ? "text-black"
+                      : "text-gray-300"
+                  }`}
+                >
+                  {category === "all" ? "All" : category.replace("_", " ")}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
+
+      {/* Error State */}
+      {!fetchingDrinks && drinks.length === 0 && (
+        <View className="flex-1 justify-center items-center px-6">
+          <Text className="text-white text-lg text-center mb-4">
+            No drinks available
+          </Text>
+          <Text className="text-gray-400 text-center mb-6">
+            Unable to load the drinks database. Please check your connection and
+            try again.
+          </Text>
+          <TouchableOpacity
+            onPress={fetchDrinks}
+            className="bg-white px-6 py-3 rounded-lg"
+          >
+            <Text className="text-black font-semibold">Retry</Text>
+          </TouchableOpacity>
         </View>
-      </ScrollView>
+      )}
 
       {/* Drinks List */}
-      <ScrollView className="flex-1 px-6">
-        <View className="space-y-3">
-          {filteredDrinks.map((drink) => (
-            <TouchableOpacity
-              key={drink.id}
-              onPress={() => setSelectedDrink(drink)}
-              className={`p-4 rounded-lg border ${
-                selectedDrink?.id === drink.id
-                  ? "bg-white border-white"
-                  : "bg-gray-900 border-gray-700"
-              }`}
-            >
-              <View className="flex-row justify-between items-start">
-                <View className="flex-1">
-                  <Text
-                    className={`font-semibold text-base ${
-                      selectedDrink?.id === drink.id
-                        ? "text-black"
-                        : "text-white"
-                    }`}
-                  >
-                    {drink.name}
-                  </Text>
-                  {drink.brand && (
-                    <Text
-                      className={`text-sm ${
-                        selectedDrink?.id === drink.id
-                          ? "text-gray-700"
-                          : "text-gray-400"
-                      }`}
-                    >
-                      {drink.brand}
-                    </Text>
-                  )}
-                  <Text
-                    className={`text-sm mt-1 ${
-                      selectedDrink?.id === drink.id
-                        ? "text-gray-600"
-                        : "text-gray-500"
-                    }`}
-                  >
-                    {drink.serving_size}
-                  </Text>
-                </View>
-                <View className="items-end">
-                  <Text
-                    className={`font-bold ${
-                      selectedDrink?.id === drink.id
-                        ? "text-black"
-                        : "text-white"
-                    }`}
-                  >
-                    {drink.caffeine_per_serving}mg
-                  </Text>
-                  <Text
-                    className={`text-xs capitalize ${
-                      selectedDrink?.id === drink.id
-                        ? "text-gray-600"
-                        : "text-gray-500"
-                    }`}
-                  >
-                    {drink.category.replace("_", " ")}
-                  </Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
+      {!fetchingDrinks && drinks.length > 0 && (
+        <ScrollView className="flex-1 px-6">
+          {filteredDrinks.length === 0 ? (
+            <View className="py-8">
+              <Text className="text-gray-400 text-center">
+                No drinks found matching your search
+              </Text>
+            </View>
+          ) : (
+            <View className="space-y-3">
+              {filteredDrinks.map((drink) => (
+                <TouchableOpacity
+                  key={drink.id}
+                  onPress={() => setSelectedDrink(drink)}
+                  className={`p-4 rounded-lg border ${
+                    selectedDrink?.id === drink.id
+                      ? "bg-white border-white"
+                      : "bg-gray-900 border-gray-700"
+                  }`}
+                >
+                  <View className="flex-row justify-between items-start">
+                    <View className="flex-1">
+                      <Text
+                        className={`font-semibold text-base ${
+                          selectedDrink?.id === drink.id
+                            ? "text-black"
+                            : "text-white"
+                        }`}
+                      >
+                        {drink.name}
+                      </Text>
+                      {drink.brand && (
+                        <Text
+                          className={`text-sm ${
+                            selectedDrink?.id === drink.id
+                              ? "text-gray-700"
+                              : "text-gray-400"
+                          }`}
+                        >
+                          {drink.brand}
+                        </Text>
+                      )}
+                      <Text
+                        className={`text-sm mt-1 ${
+                          selectedDrink?.id === drink.id
+                            ? "text-gray-600"
+                            : "text-gray-500"
+                        }`}
+                      >
+                        {drink.serving_size}
+                      </Text>
+                    </View>
+                    <View className="items-end">
+                      <Text
+                        className={`font-bold ${
+                          selectedDrink?.id === drink.id
+                            ? "text-black"
+                            : "text-white"
+                        }`}
+                      >
+                        {drink.caffeine_per_serving}mg
+                      </Text>
+                      <Text
+                        className={`text-xs capitalize ${
+                          selectedDrink?.id === drink.id
+                            ? "text-gray-600"
+                            : "text-gray-500"
+                        }`}
+                      >
+                        {drink.category.replace("_", " ")}
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </ScrollView>
+      )}
 
       {/* Selected Drink Summary */}
       {selectedDrink && (
