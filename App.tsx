@@ -1,4 +1,4 @@
-// App.tsx - Fixed navigation logic with Custom Drinks
+// App.tsx - ADD DailyLimitScreen to imports and navigation
 import React, { useEffect, useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -18,6 +18,7 @@ import CustomDrinkScreen from "./src/screens/CustomDrinkScreen";
 import ManageCustomDrinksScreen from "./src/screens/ManageCustomDrinksScreen";
 import HistoryScreen from "./src/screens/HistoryScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
+import DailyLimitScreen from "./src/screens/DailyLimitScreen"; // ADD THIS LINE
 import LoadingScreen from "./src/screens/LoadingScreen";
 
 const Stack = createNativeStackNavigator();
@@ -89,6 +90,7 @@ function AppNavigator() {
             />
             <Stack.Screen name="History" component={HistoryScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="DailyLimit" component={DailyLimitScreen} />
           </>
         )}
       </Stack.Navigator>

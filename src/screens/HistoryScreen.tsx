@@ -1,4 +1,4 @@
-// src/screens/HistoryScreen.tsx (COMPLETE)
+// src/screens/HistoryScreen.tsx - UPDATED to use custom daily limits
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -24,6 +24,7 @@ interface DailyTotal {
 
 export default function HistoryScreen() {
   const [dailyTotals, setDailyTotals] = useState<DailyTotal>({});
+  const [dailyLimit, setDailyLimit] = useState(400); // USER'S CUSTOM LIMIT
   const [loading, setLoading] = useState(true);
   const navigation = useNavigation();
   const { user, getCurrentToken } = useAuth();
@@ -31,8 +32,31 @@ export default function HistoryScreen() {
   useEffect(() => {
     if (user) {
       fetchHistory();
+      fetchUserProfile(); // FETCH USER'S DAILY LIMIT
     }
   }, [user]);
+
+  // NEW FUNCTION: Fetch user's daily limit
+  const fetchUserProfile = async () => {
+    try {
+      const token = await getCurrentToken();
+      if (!token) return;
+
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/api/user/profile`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setDailyLimit(data.daily_caffeine_limit || 400);
+      }
+    } catch (error) {
+      console.error("Failed to fetch user profile:", error);
+    }
+  };
 
   const fetchHistory = async () => {
     try {
@@ -118,7 +142,7 @@ export default function HistoryScreen() {
     ],
   };
 
-  // Calculate stats with safe number handling
+  // Calculate stats with safe number handling - USE CUSTOM DAILY LIMIT
   const validTotals = Object.values(dailyTotals)
     .filter((total) => !isNaN(Number(total)) && isFinite(Number(total)))
     .map((total) => Number(total));
@@ -128,7 +152,9 @@ export default function HistoryScreen() {
     totalDays > 0
       ? Math.round(validTotals.reduce((a, b) => a + b, 0) / totalDays)
       : 0;
-  const daysOverLimit = validTotals.filter((total) => total > 400).length;
+  const daysOverLimit = validTotals.filter(
+    (total) => total > dailyLimit
+  ).length; // USE CUSTOM LIMIT
   const maxIntake = validTotals.length > 0 ? Math.max(...validTotals) : 0;
 
   if (loading) {
@@ -187,7 +213,7 @@ export default function HistoryScreen() {
               <View className="absolute top-4 right-4">
                 <View className="bg-black bg-opacity-50 px-2 py-1 rounded">
                   <Text className="text-gray-300 text-xs">
-                    Daily limit: 400mg
+                    Daily limit: {dailyLimit}mg
                   </Text>
                 </View>
               </View>
@@ -210,7 +236,7 @@ export default function HistoryScreen() {
 
             <View className="bg-gray-900 p-4 rounded-lg border border-gray-700">
               <View className="flex-row justify-between items-center">
-                <Text className="text-gray-300">Days Over Limit</Text>
+                <Text className="text-gray-300">Days Over Your Limit</Text>
                 <Text
                   className={`text-xl font-bold ${
                     daysOverLimit > 0 ? "text-red-400" : "text-green-400"
@@ -226,10 +252,19 @@ export default function HistoryScreen() {
                 <Text className="text-gray-300">Highest Single Day</Text>
                 <Text
                   className={`text-xl font-bold ${
-                    maxIntake > 400 ? "text-red-400" : "text-white"
+                    maxIntake > dailyLimit ? "text-red-400" : "text-white"
                   }`}
                 >
                   {maxIntake}mg
+                </Text>
+              </View>
+            </View>
+
+            <View className="bg-gray-900 p-4 rounded-lg border border-gray-700">
+              <View className="flex-row justify-between items-center">
+                <Text className="text-gray-300">Your Daily Limit</Text>
+                <Text className="text-white text-xl font-bold">
+                  {dailyLimit}mg
                 </Text>
               </View>
             </View>
@@ -288,15 +323,17 @@ export default function HistoryScreen() {
                         <View className="items-end">
                           <Text
                             className={`text-lg font-bold ${
-                              safeTotal > 400 ? "text-red-400" : "text-white"
+                              safeTotal > dailyLimit
+                                ? "text-red-400"
+                                : "text-white"
                             }`}
                           >
                             {safeTotal}mg
                           </Text>
                           <Text className="text-gray-400 text-xs">
-                            {safeTotal > 400
-                              ? `+${safeTotal - 400}mg over`
-                              : `${400 - safeTotal}mg under`}
+                            {safeTotal > dailyLimit
+                              ? `+${safeTotal - dailyLimit}mg over`
+                              : `${dailyLimit - safeTotal}mg under`}
                           </Text>
                         </View>
                       </View>

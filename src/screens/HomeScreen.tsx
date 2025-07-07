@@ -1,4 +1,4 @@
-// src/screens/HomeScreen.tsx - Updated with custom drinks management
+// src/screens/HomeScreen.tsx - UPDATED with custom daily limits
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -41,6 +41,7 @@ interface DailyIntake {
 
 export default function HomeScreen() {
   const [dailyIntake, setDailyIntake] = useState<DailyIntake | null>(null);
+  const [dailyLimit, setDailyLimit] = useState(400); // USER'S CUSTOM LIMIT
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const navigation = useNavigation();
@@ -52,9 +53,37 @@ export default function HomeScreen() {
     React.useCallback(() => {
       if (user) {
         fetchDailyIntake();
+        fetchUserProfile(); // FETCH USER'S DAILY LIMIT
       }
     }, [user])
   );
+
+  // NEW FUNCTION: Fetch user's daily limit
+  const fetchUserProfile = async () => {
+    try {
+      const token = await getCurrentToken();
+      if (!token) return;
+
+      console.log("Fetching user profile for daily limit...");
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/api/user/profile`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const userLimit = data.daily_caffeine_limit || 400;
+        console.log("User's daily limit:", userLimit);
+        setDailyLimit(userLimit);
+      } else {
+        console.error("Failed to fetch user profile:", response.status);
+      }
+    } catch (error) {
+      console.error("Failed to fetch user profile:", error);
+    }
+  };
 
   const fetchDailyIntake = async () => {
     try {
@@ -142,11 +171,13 @@ export default function HomeScreen() {
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchDailyIntake();
+    await fetchUserProfile(); // ALSO REFRESH USER PROFILE
     setRefreshing(false);
   };
 
+  // USE USER'S CUSTOM DAILY LIMIT
   const caffeinePercentage = dailyIntake
-    ? (dailyIntake.total_caffeine / 400) * 100
+    ? (dailyIntake.total_caffeine / dailyLimit) * 100
     : 0;
   const isOverLimit = caffeinePercentage > 100;
 
@@ -197,8 +228,8 @@ export default function HomeScreen() {
         {__DEV__ && (
           <View className="mx-6 mb-4 bg-gray-800 p-3 rounded">
             <Text className="text-yellow-400 text-xs">
-              DEBUG: Total caffeine: {dailyIntake?.total_caffeine || 0}mg, Logs:{" "}
-              {dailyIntake?.logs?.length || 0}
+              DEBUG: Total caffeine: {dailyIntake?.total_caffeine || 0}mg, Daily
+              limit: {dailyLimit}mg, Logs: {dailyIntake?.logs?.length || 0}
             </Text>
           </View>
         )}
@@ -218,15 +249,19 @@ export default function HomeScreen() {
               </Text>
               <Text className="text-gray-400 text-sm">mg caffeine</Text>
               <Text className="text-gray-400 text-xs mt-1">
-                {400 - (dailyIntake?.total_caffeine || 0) > 0
-                  ? `${400 - (dailyIntake?.total_caffeine || 0)}mg remaining`
-                  : `${(dailyIntake?.total_caffeine || 0) - 400}mg over limit`}
+                {dailyLimit - (dailyIntake?.total_caffeine || 0) > 0
+                  ? `${
+                      dailyLimit - (dailyIntake?.total_caffeine || 0)
+                    }mg remaining`
+                  : `${
+                      (dailyIntake?.total_caffeine || 0) - dailyLimit
+                    }mg over limit`}
               </Text>
             </View>
           </CircularProgress>
         </View>
 
-        {/* Status Message */}
+        {/* Status Message - Updated to use custom limit */}
         <View className="mx-6 mb-6">
           <View
             className={`p-4 rounded-lg border ${
@@ -239,10 +274,10 @@ export default function HomeScreen() {
           >
             <Text className="text-white text-center font-medium">
               {isOverLimit
-                ? "⚠️ Over daily limit - Consider reducing intake"
+                ? `⚠️ Over your ${dailyLimit}mg daily limit - Consider reducing intake`
                 : caffeinePercentage > 75
-                ? "🟡 Approaching daily limit"
-                : "✅ Within healthy range"}
+                ? `🟡 Approaching your ${dailyLimit}mg daily limit`
+                : `✅ Within your ${dailyLimit}mg daily limit`}
             </Text>
           </View>
         </View>

@@ -198,7 +198,7 @@ export default function PaywallScreen() {
           <View className="mx-6 mb-8">
             <View className="bg-white p-6 rounded-lg">
               <Text className="text-black text-2xl font-bold text-center mb-2">
-                €9.99/month
+                €5.99/month
               </Text>
               <Text className="text-gray-600 text-center mb-4">
                 Full access to all features
@@ -416,7 +416,7 @@ export default function PaywallScreen() {
             {/* Pricing Card */}
             <View className="bg-white p-6 rounded-lg mb-6">
               <Text className="text-black text-2xl font-bold text-center mb-2">
-                €9.99/month
+                €5.99/month
               </Text>
               <Text className="text-gray-600 text-center mb-4">
                 Full access • Cancel anytime

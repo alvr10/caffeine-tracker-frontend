@@ -213,6 +213,28 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Preferences Section */}
+        <View className="px-6 py-4">
+          <Text className="text-white text-lg font-bold mb-4">Preferences</Text>
+
+          <TouchableOpacity
+            onPress={() => navigation.navigate("DailyLimit" as never)}
+            className="bg-gray-900 border border-gray-700 p-4 rounded-lg mb-4"
+          >
+            <View className="flex-row justify-between items-center">
+              <View>
+                <Text className="text-white font-medium">
+                  Daily Caffeine Limit
+                </Text>
+                <Text className="text-gray-400 text-sm">
+                  Customize your daily goal
+                </Text>
+              </View>
+              <Text className="text-gray-400">→</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
         {/* Subscription Section */}
         <View className="px-6 py-4">
           <Text className="text-white text-lg font-bold mb-4">
@@ -228,6 +250,11 @@ export default function SettingsScreen() {
                 >
                   {subscriptionStatus.text}
                 </Text>
+              </View>
+
+              <View className="flex-row justify-between items-center mb-3">
+                <Text className="text-gray-400 text-sm">Price</Text>
+                <Text className="text-white text-base">€5.99/month</Text>
               </View>
 
               {subscription?.expires_at && (
