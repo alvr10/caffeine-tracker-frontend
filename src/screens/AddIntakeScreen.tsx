@@ -1,4 +1,4 @@
-// src/screens/AddIntakeScreen.tsx - Updated with notifications
+// src/screens/AddIntakeScreen.tsx - Updated with custom drinks and notifications
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
 import { useNotification } from "../context/NotificationContext";
 import * as Haptics from "expo-haptics";
@@ -45,6 +45,15 @@ export default function AddIntakeScreen() {
     }
   }, [user]);
 
+  // Refresh drinks when returning from custom drink creation
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user) {
+        fetchDrinks();
+      }
+    }, [user])
+  );
+
   const fetchDrinks = async () => {
     try {
       setFetchingDrinks(true);
@@ -79,7 +88,14 @@ export default function AddIntakeScreen() {
       console.log("Fetched drinks count:", data?.length || 0);
 
       if (Array.isArray(data)) {
-        setDrinks(data);
+        // Sort drinks: custom drinks first, then by name
+        const sortedDrinks = data.sort((a, b) => {
+          if (a.is_custom !== b.is_custom) {
+            return a.is_custom ? -1 : 1; // Custom drinks first
+          }
+          return a.name.localeCompare(b.name);
+        });
+        setDrinks(sortedDrinks);
       } else {
         console.error("Drinks data is not an array:", data);
         setDrinks([]);
@@ -222,15 +238,23 @@ export default function AddIntakeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Search */}
+      {/* Search and Add Custom */}
       <View className="px-6 py-4">
-        <TextInput
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Search drinks..."
-          placeholderTextColor="#6B7280"
-          className="bg-gray-900 text-white px-4 py-3 rounded-lg border border-gray-700"
-        />
+        <View className="flex-row space-x-3">
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search drinks..."
+            placeholderTextColor="#6B7280"
+            className="bg-gray-900 text-white px-4 py-3 rounded-lg border border-gray-700 flex-1"
+          />
+          <TouchableOpacity
+            onPress={() => navigation.navigate("CustomDrink" as never)}
+            className="bg-white px-4 py-3 rounded-lg justify-center"
+          >
+            <Text className="text-black font-semibold">+ Custom</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Categories */}
@@ -291,9 +315,17 @@ export default function AddIntakeScreen() {
         <ScrollView className="flex-1 px-6">
           {filteredDrinks.length === 0 ? (
             <View className="py-8">
-              <Text className="text-gray-400 text-center">
+              <Text className="text-gray-400 text-center mb-4">
                 No drinks found matching your search
               </Text>
+              <TouchableOpacity
+                onPress={() => navigation.navigate("CustomDrink" as never)}
+                className="bg-white py-3 px-6 rounded-lg mx-8"
+              >
+                <Text className="text-black font-semibold text-center">
+                  Create Custom Drink
+                </Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View className="space-y-3">
@@ -309,15 +341,24 @@ export default function AddIntakeScreen() {
                 >
                   <View className="flex-row justify-between items-start">
                     <View className="flex-1">
-                      <Text
-                        className={`font-semibold text-base ${
-                          selectedDrink?.id === drink.id
-                            ? "text-black"
-                            : "text-white"
-                        }`}
-                      >
-                        {drink.name}
-                      </Text>
+                      <View className="flex-row items-center">
+                        <Text
+                          className={`font-semibold text-base ${
+                            selectedDrink?.id === drink.id
+                              ? "text-black"
+                              : "text-white"
+                          }`}
+                        >
+                          {drink.name}
+                        </Text>
+                        {drink.is_custom && (
+                          <View className="ml-2 bg-blue-600 px-2 py-1 rounded">
+                            <Text className="text-white text-xs font-medium">
+                              CUSTOM
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                       {drink.brand && (
                         <Text
                           className={`text-sm ${
@@ -372,6 +413,9 @@ export default function AddIntakeScreen() {
         <View className="bg-gray-900 border-t border-gray-700 px-6 py-4">
           <Text className="text-white text-lg font-bold mb-3">
             {selectedDrink.name}
+            {selectedDrink.is_custom && (
+              <Text className="text-blue-400 text-sm"> (Custom)</Text>
+            )}
           </Text>
 
           <View className="flex-row items-center justify-between mb-4">

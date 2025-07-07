@@ -1,4 +1,4 @@
-// src/screens/HomeScreen.tsx - Updated with settings button and notifications
+// src/screens/HomeScreen.tsx - Updated with custom drinks management
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -259,6 +259,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Quick Add */}
         <View className="px-6 mb-6">
           <Text className="text-gray-400 text-sm mb-3">Quick Add</Text>
           <View className="flex-row space-x-3">
@@ -277,6 +278,18 @@ export default function HomeScreen() {
               </TouchableOpacity>
             ))}
           </View>
+        </View>
+
+        {/* Custom Drinks Management */}
+        <View className="px-6 mb-6">
+          <TouchableOpacity
+            onPress={() => navigation.navigate("ManageCustomDrinks" as never)}
+            className="bg-gray-800 border border-gray-600 py-3 rounded-lg"
+          >
+            <Text className="text-white text-center font-medium">
+              Manage My Custom Drinks
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Today's Logs */}

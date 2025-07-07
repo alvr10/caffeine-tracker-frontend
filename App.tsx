@@ -1,4 +1,4 @@
-// App.tsx - Fixed navigation logic
+// App.tsx - Fixed navigation logic with Custom Drinks
 import React, { useEffect, useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -14,6 +14,8 @@ import OnboardingScreen from "./src/screens/OnboardingScreen";
 import PaywallScreen from "./src/screens/PaywallScreen";
 import HomeScreen from "./src/screens/HomeScreen";
 import AddIntakeScreen from "./src/screens/AddIntakeScreen";
+import CustomDrinkScreen from "./src/screens/CustomDrinkScreen";
+import ManageCustomDrinksScreen from "./src/screens/ManageCustomDrinksScreen";
 import HistoryScreen from "./src/screens/HistoryScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import LoadingScreen from "./src/screens/LoadingScreen";
@@ -80,6 +82,11 @@ function AppNavigator() {
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="AddIntake" component={AddIntakeScreen} />
+            <Stack.Screen name="CustomDrink" component={CustomDrinkScreen} />
+            <Stack.Screen
+              name="ManageCustomDrinks"
+              component={ManageCustomDrinksScreen}
+            />
             <Stack.Screen name="History" component={HistoryScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
           </>
