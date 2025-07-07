@@ -1,5 +1,5 @@
-// src/screens/PaywallScreen.tsx (UPDATED with better debugging)
-import React, { useState } from "react";
+// src/screens/PaywallScreen.tsx (PREMIUM STEP-BY-STEP FLOW)
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,10 +9,15 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
 import { useSubscription } from "../context/SubscriptionContext";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+type FlowStep = "landing" | "auth" | "subscription";
+type AuthMode = "signin" | "signup";
 
 const features = [
   "Precise caffeine tracking",
@@ -33,23 +38,55 @@ const testimonials = [
     text: "Finally broke my 10-year energy drink addiction. The tracking made me accountable.",
     author: "Mike R.",
   },
-  {
-    text: "My anxiety decreased dramatically once I started monitoring my intake properly.",
-    author: "Jennifer L.",
-  },
 ];
 
 export default function PaywallScreen() {
-  const { signInWithEmail, signUpWithEmail, user, subscription } = useAuth();
+  const {
+    signInWithEmail,
+    signUpWithEmail,
+    user,
+    subscription,
+    refreshSubscription,
+  } = useAuth();
   const { createSubscription, loading: subscriptionLoading } =
     useSubscription();
 
-  // Auth form state
-  const [showAuthForm, setShowAuthForm] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [currentStep, setCurrentStep] = useState<FlowStep>("landing");
+  const [authMode, setAuthMode] = useState<AuthMode>("signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
+
+  // Auto-progress based on user state
+  useEffect(() => {
+    if (user && subscription?.status === "active") {
+      // User is signed in and subscribed - should redirect to app
+      // This will be handled by App.tsx navigation logic
+      return;
+    }
+
+    if (
+      user &&
+      subscription?.status !== "active" &&
+      subscription?.status !== "active_until_period_end"
+    ) {
+      // User signed in but not subscribed - go to subscription step
+      setCurrentStep("subscription");
+    } else if (!user && currentStep === "subscription") {
+      // User signed out - go back to auth
+      setCurrentStep("auth");
+    }
+  }, [user, subscription]);
+
+  const handleStartJourney = () => {
+    setCurrentStep("auth");
+    setAuthMode("signup");
+  };
+
+  const handleAlreadyHaveAccount = () => {
+    setCurrentStep("auth");
+    setAuthMode("signin");
+  };
 
   const handleAuth = async () => {
     if (!email || !password) {
@@ -57,19 +94,21 @@ export default function PaywallScreen() {
       return;
     }
 
-    if (password.length < 6) {
+    if (authMode === "signup" && password.length < 6) {
       Alert.alert("Error", "Password must be at least 6 characters");
       return;
     }
 
     setAuthLoading(true);
     try {
-      if (isSignUp) {
+      if (authMode === "signup") {
         await signUpWithEmail(email, password);
-        setShowAuthForm(false);
+        // After successful signup, proceed to subscription
+        setCurrentStep("subscription");
       } else {
         await signInWithEmail(email, password);
-        setShowAuthForm(false);
+        // After signin, check subscription status and proceed accordingly
+        await refreshSubscription();
       }
     } catch (error: any) {
       Alert.alert("Error", error.message);
@@ -79,157 +118,31 @@ export default function PaywallScreen() {
   };
 
   const handleSubscribe = async () => {
-    // Debug logging
-    console.log("Subscribe button pressed");
-    console.log("User:", user ? user.email : "No user");
-    console.log("Subscription:", subscription);
-
-    if (!user) {
-      console.log("No user found, showing auth form");
-      setShowAuthForm(true);
-      return;
-    }
-
     try {
-      console.log("Calling createSubscription...");
       const success = await createSubscription();
-      console.log("Subscription result:", success);
+      if (success) {
+        await refreshSubscription();
+        // App.tsx will handle navigation to main app
+      }
     } catch (error) {
-      console.error("Subscribe error:", error);
       Alert.alert("Error", "Unable to process subscription. Please try again.");
     }
   };
 
-  const getButtonText = () => {
-    if (subscriptionLoading) return "Processing Payment...";
-    if (authLoading) return "Signing In...";
-    if (!user) return "Sign In to Subscribe";
-    if (subscription?.status === "active") return "Already Subscribed";
-    return "Subscribe Now";
-  };
-
-  const isButtonDisabled = () => {
+  // STEP 1: LANDING PAGE
+  if (currentStep === "landing") {
     return (
-      subscriptionLoading || authLoading || subscription?.status === "active"
-    );
-  };
-
-  return (
-    <SafeAreaView className="flex-1 bg-black">
-      <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
+      <SafeAreaView className="flex-1 bg-black">
         <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
           {/* Header */}
-          <View className="px-6 pt-8 pb-6">
+          <View className="px-6 pt-12 pb-8">
             <Text className="text-white text-4xl font-bold text-center mb-4">
               CaffTracker Pro
             </Text>
-            <Text className="text-gray-300 text-lg text-center">
+            <Text className="text-gray-300 text-xl text-center">
               Take control of your caffeine intake
             </Text>
           </View>
-
-          {/* Debug Info */}
-          {__DEV__ && (
-            <View className="mx-6 mb-4 bg-gray-800 p-3 rounded">
-              <Text className="text-yellow-400 text-xs">
-                DEBUG: User: {user ? `✅ ${user.email}` : "❌ Not signed in"}
-              </Text>
-              <Text className="text-yellow-400 text-xs">
-                Subscription: {subscription?.status || "inactive"}
-              </Text>
-            </View>
-          )}
-
-          {/* Auth Form */}
-          {showAuthForm && !user && (
-            <View className="mx-6 mb-8 bg-gray-900 p-6 rounded-lg border border-gray-700">
-              <Text className="text-white text-xl font-bold text-center mb-4">
-                {isSignUp ? "Create Account" : "Sign In"}
-              </Text>
-
-              <TextInput
-                value={email}
-                onChangeText={setEmail}
-                placeholder="Email"
-                placeholderTextColor="#6B7280"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                className="bg-gray-800 text-white px-4 py-3 rounded-lg mb-3 border border-gray-600"
-              />
-
-              <TextInput
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Password (min 6 characters)"
-                placeholderTextColor="#6B7280"
-                secureTextEntry
-                className="bg-gray-800 text-white px-4 py-3 rounded-lg mb-4 border border-gray-600"
-              />
-
-              <TouchableOpacity
-                onPress={handleAuth}
-                disabled={authLoading}
-                className={`py-3 rounded-lg mb-3 ${
-                  authLoading ? "bg-gray-700" : "bg-white"
-                }`}
-              >
-                <Text className="text-black text-center font-bold">
-                  {authLoading
-                    ? "Loading..."
-                    : isSignUp
-                    ? "Sign Up"
-                    : "Sign In"}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setIsSignUp(!isSignUp)}
-                className="py-2"
-              >
-                <Text className="text-gray-400 text-center">
-                  {isSignUp
-                    ? "Already have an account? Sign In"
-                    : "Don't have an account? Sign Up"}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setShowAuthForm(false)}
-                className="py-2"
-              >
-                <Text className="text-gray-500 text-center text-sm">
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* User Status */}
-          {user && (
-            <View
-              className={`mx-6 mb-6 p-4 rounded-lg border ${
-                subscription?.status === "active"
-                  ? "bg-green-900 border-green-700"
-                  : "bg-blue-900 border-blue-700"
-              }`}
-            >
-              <Text
-                className={`text-center ${
-                  subscription?.status === "active"
-                    ? "text-green-300"
-                    : "text-blue-300"
-                }`}
-              >
-                {subscription?.status === "active"
-                  ? `✅ Subscribed as ${user.email}`
-                  : `👤 Signed in as ${user.email}`}
-              </Text>
-            </View>
-          )}
 
           {/* Urgency Message */}
           <View className="bg-white mx-6 p-6 rounded-lg mb-8">
@@ -238,7 +151,7 @@ export default function PaywallScreen() {
             </Text>
             <Text className="text-gray-700 text-center text-base">
               Every day without proper tracking is another day of potential
-              overconsumption. Start protecting your health today.
+              overconsumption.
             </Text>
           </View>
 
@@ -296,26 +209,253 @@ export default function PaywallScreen() {
             </View>
           </View>
 
-          {/* CTA */}
+          {/* CTA Buttons */}
           <View className="px-6 pb-8">
             <TouchableOpacity
-              onPress={handleSubscribe}
-              disabled={isButtonDisabled()}
-              className={`py-4 rounded-lg mb-4 ${
-                isButtonDisabled() ? "bg-gray-700" : "bg-white"
-              }`}
+              onPress={handleStartJourney}
+              className="bg-white py-4 rounded-lg mb-4"
             >
               <Text className="text-black text-lg font-bold text-center">
-                {getButtonText()}
+                Start Your Journey
               </Text>
             </TouchableOpacity>
 
-            <Text className="text-gray-500 text-xs text-center">
+            <TouchableOpacity
+              onPress={handleAlreadyHaveAccount}
+              className="border border-gray-600 py-4 rounded-lg"
+            >
+              <Text className="text-white text-lg font-medium text-center">
+                I Already Have an Account
+              </Text>
+            </TouchableOpacity>
+
+            <Text className="text-gray-500 text-xs text-center mt-4">
               Cancel anytime. Your health is worth it.
             </Text>
           </View>
+
+          {__DEV__ && (
+            <TouchableOpacity
+              onPress={async () => {
+                await AsyncStorage.removeItem("hasSeenOnboarding");
+                // Force app restart by clearing auth
+                // You can also add: await signOut();
+                Alert.alert("Debug", "Onboarding reset! Restart the app.");
+              }}
+              className="bg-red-600 p-3 rounded-lg m-4"
+            >
+              <Text className="text-white text-center">
+                DEBUG: Reset Onboarding
+              </Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
-  );
+      </SafeAreaView>
+    );
+  }
+
+  // STEP 2: AUTHENTICATION
+  if (currentStep === "auth") {
+    return (
+      <SafeAreaView className="flex-1 bg-black">
+        <KeyboardAvoidingView
+          className="flex-1"
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          {/* Progress Bar */}
+          <View className="px-6 pt-4 pb-2">
+            <View className="flex-row items-center mb-4">
+              <TouchableOpacity onPress={() => setCurrentStep("landing")}>
+                <Text className="text-white text-lg">← Back</Text>
+              </TouchableOpacity>
+            </View>
+            <View className="flex-row justify-center space-x-2 mb-6">
+              <View className="h-1 bg-white rounded-full flex-1" />
+              <View className="h-1 bg-gray-700 rounded-full flex-1" />
+            </View>
+            <Text className="text-gray-400 text-center text-sm">
+              Step 1 of 2:{" "}
+              {authMode === "signup" ? "Create Account" : "Sign In"}
+            </Text>
+          </View>
+
+          <ScrollView
+            className="flex-1"
+            contentContainerStyle={{ flexGrow: 1 }}
+          >
+            <View className="flex-1 px-6 justify-center">
+              <View className="mb-8">
+                <Text className="text-white text-3xl font-bold text-center mb-4">
+                  {authMode === "signup"
+                    ? "Create Your Account"
+                    : "Welcome Back"}
+                </Text>
+                <Text className="text-gray-300 text-lg text-center">
+                  {authMode === "signup"
+                    ? "Join thousands taking control of their caffeine intake"
+                    : "Sign in to continue your journey"}
+                </Text>
+              </View>
+
+              <View className="bg-gray-900 p-6 rounded-lg border border-gray-700 mb-6">
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="Email address"
+                  placeholderTextColor="#6B7280"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  className="bg-gray-800 text-white px-4 py-4 rounded-lg mb-4 border border-gray-600 text-lg"
+                />
+
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder={
+                    authMode === "signup"
+                      ? "Password (min 6 characters)"
+                      : "Password"
+                  }
+                  placeholderTextColor="#6B7280"
+                  secureTextEntry
+                  className="bg-gray-800 text-white px-4 py-4 rounded-lg mb-6 border border-gray-600 text-lg"
+                />
+
+                <TouchableOpacity
+                  onPress={handleAuth}
+                  disabled={authLoading}
+                  className={`py-4 rounded-lg mb-4 ${
+                    authLoading ? "bg-gray-700" : "bg-white"
+                  }`}
+                >
+                  {authLoading ? (
+                    <View className="flex-row justify-center items-center">
+                      <ActivityIndicator size="small" color="#000" />
+                      <Text className="text-black text-lg font-bold ml-2">
+                        {authMode === "signup"
+                          ? "Creating Account..."
+                          : "Signing In..."}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text className="text-black text-lg font-bold text-center">
+                      {authMode === "signup" ? "Create Account" : "Sign In"}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() =>
+                    setAuthMode(authMode === "signup" ? "signin" : "signup")
+                  }
+                >
+                  <Text className="text-gray-400 text-center">
+                    {authMode === "signup"
+                      ? "Already have an account? "
+                      : "Don't have an account? "}
+                    <Text className="text-white font-medium">
+                      {authMode === "signup" ? "Sign In" : "Sign Up"}
+                    </Text>
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
+  // STEP 3: SUBSCRIPTION
+  if (currentStep === "subscription") {
+    return (
+      <SafeAreaView className="flex-1 bg-black">
+        {/* Progress Bar */}
+        <View className="px-6 pt-4 pb-2">
+          <View className="flex-row justify-center space-x-2 mb-6">
+            <View className="h-1 bg-white rounded-full flex-1" />
+            <View className="h-1 bg-white rounded-full flex-1" />
+          </View>
+          <Text className="text-gray-400 text-center text-sm">
+            Step 2 of 2: Complete Your Subscription
+          </Text>
+        </View>
+
+        <ScrollView className="flex-1" contentContainerStyle={{ flexGrow: 1 }}>
+          <View className="flex-1 px-6 justify-center">
+            <View className="mb-8">
+              <Text className="text-white text-3xl font-bold text-center mb-4">
+                Almost There!
+              </Text>
+              <Text className="text-gray-300 text-lg text-center mb-2">
+                Welcome, {user?.email}
+              </Text>
+              <Text className="text-gray-400 text-center">
+                Complete your subscription to unlock all features
+              </Text>
+            </View>
+
+            {/* Subscription Benefits */}
+            <View className="bg-gray-900 p-6 rounded-lg border border-gray-700 mb-6">
+              <Text className="text-white text-xl font-bold text-center mb-4">
+                What You Get
+              </Text>
+              <View className="space-y-3">
+                {features.slice(0, 4).map((feature, index) => (
+                  <View key={index} className="flex-row items-center">
+                    <Text className="text-green-400 text-lg mr-3">✓</Text>
+                    <Text className="text-white text-base flex-1">
+                      {feature}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* Pricing Card */}
+            <View className="bg-white p-6 rounded-lg mb-6">
+              <Text className="text-black text-2xl font-bold text-center mb-2">
+                €9.99/month
+              </Text>
+              <Text className="text-gray-600 text-center mb-4">
+                Full access • Cancel anytime
+              </Text>
+              <Text className="text-gray-700 text-sm text-center">
+                Start your transformation today
+              </Text>
+            </View>
+
+            {/* Subscribe Button */}
+            <TouchableOpacity
+              onPress={handleSubscribe}
+              disabled={subscriptionLoading}
+              className={`py-4 rounded-lg mb-4 ${
+                subscriptionLoading ? "bg-gray-700" : "bg-white"
+              }`}
+            >
+              {subscriptionLoading ? (
+                <View className="flex-row justify-center items-center">
+                  <ActivityIndicator size="small" color="#000" />
+                  <Text className="text-black text-lg font-bold ml-2">
+                    Processing Payment...
+                  </Text>
+                </View>
+              ) : (
+                <Text className="text-black text-lg font-bold text-center">
+                  Complete Subscription
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <Text className="text-gray-500 text-xs text-center">
+              Secure payment • Cancel anytime • No hidden fees
+            </Text>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  return null;
 }

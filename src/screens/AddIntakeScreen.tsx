@@ -12,12 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
 import { useNotification } from "../context/NotificationContext";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.EXPO_PUBLIC_SUPABASE_URL!,
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
-);
+import * as Haptics from "expo-haptics";
 
 interface Drink {
   id: number;
@@ -153,6 +148,8 @@ export default function AddIntakeScreen() {
         const totalCaffeine = Math.round(
           selectedDrink.caffeine_per_serving * servingsNum
         );
+
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
         // Navigate back first, then show notification
         navigation.goBack();

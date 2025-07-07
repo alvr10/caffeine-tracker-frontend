@@ -9,7 +9,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation } from "@react-navigation/native";
 
 const { width } = Dimensions.get("window");
 
@@ -48,7 +47,6 @@ const onboardingData = [
 
 export default function OnboardingScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const navigation = useNavigation();
 
   const handleNext = () => {
     if (currentIndex < onboardingData.length - 1) {
@@ -59,13 +57,13 @@ export default function OnboardingScreen() {
   };
 
   const finishOnboarding = async () => {
-    await AsyncStorage.setItem("hasSeenOnboarding", "true");
-    // FIXED: Force a complete re-render instead of navigation
-    // This will trigger the App.tsx logic to show PaywallScreen
-    navigation.reset({
-      index: 0,
-      routes: [{ name: "Paywall" as never }],
-    });
+    try {
+      await AsyncStorage.setItem("hasSeenOnboarding", "true");
+      // Don't navigate manually - let App.tsx handle the state change
+      // The useEffect in App.tsx will detect the change and re-render
+    } catch (error) {
+      console.error("Failed to save onboarding status:", error);
+    }
   };
 
   const currentData = onboardingData[currentIndex];
@@ -137,7 +135,9 @@ export default function OnboardingScreen() {
         {/* Action Button */}
         <TouchableOpacity
           onPress={handleNext}
-          className="bg-white py-4 rounded-lg mx-4"
+          className={`bg-white py-4 rounded-lg mx-4 ${
+            isLastSlide ? "mb-6" : "mb-0"
+          }`}
         >
           <Text className="text-black text-lg font-bold text-center">
             {isLastSlide ? "Start Taking Control" : "Continue"}

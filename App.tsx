@@ -1,4 +1,4 @@
-// App.tsx - Updated with NotificationProvider and Settings screen
+// App.tsx - Fixed navigation logic
 import React, { useEffect, useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -20,31 +20,48 @@ import LoadingScreen from "./src/screens/LoadingScreen";
 
 const Stack = createNativeStackNavigator();
 
-// UPDATE App.tsx - Fix navigation logic to allow active_until_period_end
 function AppNavigator() {
   const { user, subscription, loading } = useAuth();
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(
     null
   );
+  const [checkingOnboarding, setCheckingOnboarding] = useState(true);
 
   useEffect(() => {
     checkOnboardingStatus();
   }, []);
+
+  // Add a listener for storage changes to detect when onboarding is completed
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      if (hasSeenOnboarding === false) {
+        const seen = await AsyncStorage.getItem("hasSeenOnboarding");
+        if (seen === "true") {
+          setHasSeenOnboarding(true);
+        }
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [hasSeenOnboarding]);
 
   const checkOnboardingStatus = async () => {
     try {
       const seen = await AsyncStorage.getItem("hasSeenOnboarding");
       setHasSeenOnboarding(seen === "true");
     } catch (error) {
+      console.error("Failed to check onboarding status:", error);
       setHasSeenOnboarding(false);
+    } finally {
+      setCheckingOnboarding(false);
     }
   };
 
-  if (loading || hasSeenOnboarding === null) {
+  if (loading || checkingOnboarding || hasSeenOnboarding === null) {
     return <LoadingScreen />;
   }
 
-  // FIXED: Check for both active and active_until_period_end
+  // Check for both active and active_until_period_end
   const hasActiveSubscription =
     subscription?.status === "active" ||
     subscription?.status === "active_until_period_end";

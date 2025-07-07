@@ -14,6 +14,7 @@ import IntakeLogItem from "../components/IntakeLogItem";
 import { useAuth } from "../context/AuthContext";
 import { useNotification } from "../context/NotificationContext";
 import { createClient } from "@supabase/supabase-js";
+import * as Haptics from "expo-haptics";
 
 const supabase = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_URL!,
@@ -95,6 +96,49 @@ export default function HomeScreen() {
     }
   };
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 17) return "Good afternoon";
+    return "Good evening";
+  };
+
+  const quickDrinks = [
+    { name: "Drip Coffee", caffeine: 95, id: 5 },
+    { name: "Espresso", caffeine: 64, id: 1 },
+    { name: "Green Tea", caffeine: 25, id: 18 },
+  ];
+
+  const quickAddIntake = async (drinkName: string, caffeine: number) => {
+    try {
+      const token = await getCurrentToken();
+      if (!token) return;
+
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/api/intake`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            drink_id: quickDrinks.find((d) => d.name === drinkName)?.id,
+            servings: 1,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        fetchDailyIntake();
+        showNotification(`Added ${drinkName} (${caffeine}mg)`, "success");
+      }
+    } catch (error) {
+      showNotification("Failed to add intake", "error");
+    }
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchDailyIntake();
@@ -130,13 +174,13 @@ export default function HomeScreen() {
         <View className="flex-row justify-between items-center px-6 pt-4 pb-6">
           <View>
             <Text className="text-white text-2xl font-bold">
-              Today's Intake
+              {getGreeting()}
             </Text>
-            <Text className="text-gray-400 text-sm">
+            <Text className="text-gray-400 text-base">Today's Intake</Text>
+            <Text className="text-gray-500 text-sm">
               {new Date().toLocaleDateString("en-US", {
                 weekday: "long",
-                year: "numeric",
-                month: "long",
+                month: "short",
                 day: "numeric",
               })}
             </Text>
@@ -213,6 +257,26 @@ export default function HomeScreen() {
               + Log Caffeine Intake
             </Text>
           </TouchableOpacity>
+        </View>
+
+        <View className="px-6 mb-6">
+          <Text className="text-gray-400 text-sm mb-3">Quick Add</Text>
+          <View className="flex-row space-x-3">
+            {quickDrinks.map((drink) => (
+              <TouchableOpacity
+                key={drink.name}
+                onPress={() => quickAddIntake(drink.name, drink.caffeine)}
+                className="flex-1 bg-gray-800 border border-gray-600 py-3 px-2 rounded-lg"
+              >
+                <Text className="text-white text-sm font-medium text-center">
+                  {drink.name}
+                </Text>
+                <Text className="text-gray-400 text-xs text-center">
+                  {drink.caffeine}mg
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Today's Logs */}
