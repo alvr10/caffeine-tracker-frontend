@@ -1,6 +1,6 @@
 export default {
   expo: {
-    name: "CaffTracker",
+    name: "Caffeine Tracker",
     slug: "cafftracker",
     version: "1.0.0",
     orientation: "portrait",

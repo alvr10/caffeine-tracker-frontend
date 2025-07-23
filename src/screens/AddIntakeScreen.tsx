@@ -7,6 +7,7 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
@@ -38,6 +39,20 @@ export default function AddIntakeScreen() {
   const { showNotification } = useNotification();
 
   const categories = ["all", "coffee", "tea", "energy_drink", "soda", "other"];
+
+  // Function to get the appropriate image based on drink category
+  const getDrinkImage = (category: string) => {
+    switch (category) {
+      case "coffee":
+        return require("../../assets/images/drinks/coffee-image.png");
+      case "tea":
+        return require("../../assets/images/drinks/tea-image.png");
+      case "energy_drink":
+        return require("../../assets/images/drinks/energy-drink-image.png");
+      default:
+        return require("../../assets/images/drinks/coffee-image.png"); // default image
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -340,45 +355,53 @@ export default function AddIntakeScreen() {
                   }`}
                 >
                   <View className="flex-row justify-between items-start">
-                    <View className="flex-1">
-                      <View className="flex-row items-center">
-                        <Text
-                          className={`font-semibold text-base ${
-                            selectedDrink?.id === drink.id
-                              ? "text-black"
-                              : "text-white"
-                          }`}
-                        >
-                          {drink.name}
-                        </Text>
-                        {drink.is_custom && (
-                          <View className="ml-2 bg-blue-600 px-2 py-1 rounded">
-                            <Text className="text-white text-xs font-medium">
-                              CUSTOM
-                            </Text>
-                          </View>
+                    <View className="flex-row flex-1">
+                      {/* Drink Image */}
+                      <Image
+                        source={getDrinkImage(drink.category)}
+                        style={{ width: 40, height: 40, marginRight: 12 }}
+                        resizeMode="contain"
+                      />
+                      <View className="flex-1">
+                        <View className="flex-row items-center">
+                          <Text
+                            className={`font-semibold text-base ${
+                              selectedDrink?.id === drink.id
+                                ? "text-black"
+                                : "text-white"
+                            }`}
+                          >
+                            {drink.name}
+                          </Text>
+                          {drink.is_custom && (
+                            <View className="ml-2 bg-blue-600 px-2 py-1 rounded">
+                              <Text className="text-white text-xs font-medium">
+                                CUSTOM
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        {drink.brand && (
+                          <Text
+                            className={`text-sm ${
+                              selectedDrink?.id === drink.id
+                                ? "text-gray-700"
+                                : "text-gray-400"
+                            }`}
+                          >
+                            {drink.brand}
+                          </Text>
                         )}
-                      </View>
-                      {drink.brand && (
                         <Text
-                          className={`text-sm ${
+                          className={`text-sm mt-1 ${
                             selectedDrink?.id === drink.id
-                              ? "text-gray-700"
-                              : "text-gray-400"
+                              ? "text-gray-600"
+                              : "text-gray-500"
                           }`}
                         >
-                          {drink.brand}
+                          {drink.serving_size}
                         </Text>
-                      )}
-                      <Text
-                        className={`text-sm mt-1 ${
-                          selectedDrink?.id === drink.id
-                            ? "text-gray-600"
-                            : "text-gray-500"
-                        }`}
-                      >
-                        {drink.serving_size}
-                      </Text>
+                      </View>
                     </View>
                     <View className="items-end">
                       <Text
